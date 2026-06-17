@@ -55,16 +55,15 @@ Dans `/home/toto/ansible`, garder cette structure :
         │   └── main.yml
         ├── tasks/
         │   └── main.yml
-        └── templates/
-            ├── default.conf.j2
-            └── index.html.j2
+        └── files/
+            └── index.html
 ```
 
 Commande pour créer les dossiers :
 
 ```bash
 mkdir -p /home/toto/ansible/{inventories,playbooks}
-mkdir -p /home/toto/ansible/roles/nginx/{defaults,handlers,tasks,templates}
+mkdir -p /home/toto/ansible/roles/nginx/{defaults,handlers,tasks,files}
 ```
 
 Commande pour créer les fichiers :
@@ -76,8 +75,7 @@ touch /home/toto/ansible/playbooks/nginx.yml
 touch /home/toto/ansible/roles/nginx/defaults/main.yml
 touch /home/toto/ansible/roles/nginx/tasks/main.yml
 touch /home/toto/ansible/roles/nginx/handlers/main.yml
-touch /home/toto/ansible/roles/nginx/templates/default.conf.j2
-touch /home/toto/ansible/roles/nginx/templates/index.html.j2
+touch /home/toto/ansible/roles/nginx/files/index.html
 ```
 
 Les rôles Ansible chargent automatiquement les fichiers `tasks`, `handlers`, `defaults`, `templates`, etc., selon l’arborescence officielle des rôles.
@@ -180,12 +178,16 @@ Contenu :
 
 ```yaml
 ---
-- name: Déployer Nginx sur le client Ansible
-  hosts: webservers
+- name: Déployer Nginx sur les serveurs web
+  hosts: localhost
   become: true
 
   roles:
     - nginx
+
+  vars:
+    src: "/home/toto/ansible/roles/nginx/files/index.html"
+    dest: "/var/www/html"
 ```
 
 Ce playbook cible le groupe `webservers` défini dans l’inventaire et appelle le rôle `nginx`.
@@ -206,17 +208,8 @@ Contenu :
 
 ```yaml
 ---
-nginx_package_name: nginx
-nginx_service_name: nginx
-
-nginx_document_root: /var/www/html
-nginx_index_file: /var/www/html/index.html
-
-nginx_site_available: /etc/nginx/sites-available/default
-nginx_site_enabled: /etc/nginx/sites-enabled/default
-
-nginx_listen_port: 80
-nginx_server_name: "_"
+src: ""
+dest: ""
 ```
 
 Ce fichier contient les variables par défaut du rôle `nginx`.
@@ -235,55 +228,25 @@ Contenu :
 
 ```yaml
 ---
-- name: Mettre à jour le cache APT
+- name: update && install nginx
   ansible.builtin.apt:
-    update_cache: true
-    cache_valid_time: 3600
+    name: nginx
+    update_cache: yes
 
-- name: Installer Nginx
-  ansible.builtin.apt:
-    name: "{{ nginx_package_name }}"
-    state: present
+- name: copy index.nginx-debian.html
+  ansible.builtin.copy:
+    src: "{{ src }}"
+    dest: "{{ dest }}"
+    owner: toto
+    group: toto
+    mode: '0644'
 
-- name: Vérifier que le dossier web existe
-  ansible.builtin.file:
-    path: "{{ nginx_document_root }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Déployer la configuration du site Nginx par défaut
-  ansible.builtin.template:
-    src: default.conf.j2
-    dest: "{{ nginx_site_available }}"
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Reload nginx
-
-- name: Activer le site Nginx par défaut
-  ansible.builtin.file:
-    src: "{{ nginx_site_available }}"
-    dest: "{{ nginx_site_enabled }}"
-    state: link
-    force: true
-  notify: Reload nginx
-
-- name: Déployer la page d'accueil
-  ansible.builtin.template:
-    src: index.html.j2
-    dest: "{{ nginx_index_file }}"
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Reload nginx
-
-- name: Démarrer et activer le service Nginx
-  ansible.builtin.service:
-    name: "{{ nginx_service_name }}"
-    state: started
+- name: enable, start and daemon-reload nginx
+  ansible.builtin.systemd:
+    name: nginx
     enabled: true
+    state: started
+    daemon_reload: true
 ```
 
 Le module `ansible.builtin.apt` gère les paquets APT. Il est donc adapté pour installer `nginx` sur une distribution Debian ou Ubuntu.
